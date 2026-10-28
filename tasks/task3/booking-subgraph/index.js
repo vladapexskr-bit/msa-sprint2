@@ -19,14 +19,39 @@ const typeDefs = gql`
 `;
 
 const resolvers = {
-  Query: {
-    bookingsByUser: async (_, { userId }, { req }) => {
-		// TODO: Реальный вызов к grpc booking-сервису или заглушка + ACL
+    Query: {
+        bookingsByUser: async (_, { userId }, { req }) => {
+            const currentUserId = req.user?.id || req.headers['x-user-id'];
+
+            if (!currentUserId) {
+                throw new Error("Неавторизован: отсутствует токен или ID пользователя");
+            }
+
+            if (userId !== currentUserId) {
+                throw new Error("Доступ запрещен: вы можете смотреть только свои бронирования");
+            }
+
+            try {
+                const response = await fetch(`http://booking-service:8085/api/bookings/${userId}`);
+
+                if (!response.ok) {
+                    throw new Error(`Ошибка Java-сервиса: HTTP ${response.status}`);
+                }
+
+                const bookings = await response.json();
+
+                return bookings;
+            } catch (error) {
+                console.error("Ошибка при получении бронирований:", error.message);
+                throw new Error("Не удалось получить бронирования из базы");
+            }
+        },
     },
-  },
-  Booking: {
-	  // TODO: Реальный вызов к grpc booking-сервису или заглушка + ACL
-  },
+    Booking: {
+        __resolveReference: async (booking) => {
+            return booking;
+        }
+    },
 };
 
 const server = new ApolloServer({
